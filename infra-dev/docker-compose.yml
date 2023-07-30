@@ -1,0 +1,8 @@
+version: "3"
+services:
+  llama2:
+    build: ./llama2
+    volumes:
+      - ../:/usr/src/llama2.zig
+    tty: true
+    working_dir: /usr/src/llama2.zig/llama2
