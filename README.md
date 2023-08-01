@@ -15,7 +15,7 @@ Llama 2 inference in Zig
     See [`model.py`](https://github.com/karpathy/llama2.c/blob/f61807d/model.py#L317) for more details about how the `.bin` file was exported.
 3. Inference:
     ```bash
-    zig build run -- ../models/TinyLlama-15M.bin
+    zig build run -- ../models/TinyLlama-15M.bin ../llama2.c/tokenizer.bin
     ```
 
 ## References
