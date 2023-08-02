@@ -18,4 +18,7 @@ pub fn main() !void {
     const tokenizer_file_path = args[2];
     const tokenizer = try Tokenizer.init(allocator, tokenizer_file_path, model.config.vocab_size);
     defer tokenizer.deinit();
+    // process the prompt
+    const prompt_tokens = try tokenizer.bpeEncode("Hello darkness, my old friend");
+    defer prompt_tokens.deinit();
 }
