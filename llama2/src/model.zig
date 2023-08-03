@@ -4,13 +4,13 @@ const Allocator = std.mem.Allocator;
 
 // See: https://github.com/karpathy/llama2.c/blob/master/run.c, `Config` struct
 const Config = struct {
-    dim: i32, // transformer dimension
-    hidden_dim: i32, // for ffn layers
-    n_layers: i32, // number of layers
-    n_heads: i32, // number of query heads
-    n_kv_heads: i32, // number of key/value heads (can be < query heads because of multiquery)
-    vocab_size: i32, // vocabulary size, usually 256 (byte-level)
-    seq_len: i32, // max sequence length
+    dim: usize, // transformer dimension
+    hidden_dim: usize, // for ffn layers
+    n_layers: usize, // number of layers
+    n_heads: usize, // number of query heads
+    n_kv_heads: usize, // number of key/value heads (can be < query heads because of multiquery)
+    vocab_size: usize, // vocabulary size, usually 256 (byte-level)
+    seq_len: usize, // max sequence length
 };
 
 // See: https://github.com/karpathy/llama2.c/blob/master/run.c, `TransformerWeights` struct
@@ -56,13 +56,13 @@ pub const Model = struct {
         // Read config
         const config_bytes: [7]i32 = @bitCast(try reader.readBytesNoEof(@sizeOf(i32) * 7));
         const config: Config = .{
-            .dim = config_bytes[0],
-            .hidden_dim = config_bytes[1],
-            .n_layers = config_bytes[2],
-            .n_heads = config_bytes[3],
-            .n_kv_heads = config_bytes[4],
-            .vocab_size = config_bytes[5],
-            .seq_len = config_bytes[6],
+            .dim = @intCast(config_bytes[0]),
+            .hidden_dim = @intCast(config_bytes[1]),
+            .n_layers = @intCast(config_bytes[2]),
+            .n_heads = @intCast(config_bytes[3]),
+            .n_kv_heads = @intCast(config_bytes[4]),
+            .vocab_size = @intCast(config_bytes[5]),
+            .seq_len = @intCast(config_bytes[6]),
         };
         const pos = try file.getPos();
         const file_size = (try file.stat()).size;
@@ -89,7 +89,7 @@ pub const Model = struct {
 fn readWeight(allocator: Allocator, config: Config, weight_memory: []const u8) !Weight {
     const head_size = @divExact(config.dim, config.n_heads);
     // TODO: Explore methods for calculating the size of each weights
-    const weight_sizes = [_]i32{
+    const weight_sizes = [_]usize{
         config.vocab_size * config.dim, // token_embedding_table
         config.n_layers * config.dim, // rms_att_weight
         config.n_layers * config.dim * config.dim, // wq
@@ -108,7 +108,7 @@ fn readWeight(allocator: Allocator, config: Config, weight_memory: []const u8) !
     defer allocator.free(memories);
     var pos: usize = 0;
     for (weight_sizes, memories) |size, *memory| {
-        const next_pos = pos + @as(usize, @intCast(size)) * @sizeOf(f32);
+        const next_pos = pos + size * @sizeOf(f32);
         memory.* = weight_memory[pos..next_pos];
         pos = next_pos;
     }
