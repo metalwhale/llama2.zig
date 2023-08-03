@@ -1,5 +1,7 @@
 const std = @import("std");
 const utils = @import("utils.zig");
+const math = @import("math.zig");
+const State = @import("state.zig").State;
 const Allocator = std.mem.Allocator;
 
 // See: https://github.com/karpathy/llama2.c/blob/master/run.c, `Config` struct
@@ -83,6 +85,94 @@ pub const Model = struct {
     pub fn deinit(self: Self) void {
         std.os.munmap(self.memory);
     }
+
+    // See: https://github.com/karpathy/llama2.c/blob/master/run.c, `transformer` function
+    pub fn transformer(self: Self, state: State, token: usize, pos: usize) ![]const f32 {
+        // a few convenience variables
+        const dim = self.config.dim;
+        const hidden_dim = self.config.hidden_dim;
+        const head_size = dim / self.config.n_heads;
+        const weight = self.weight;
+        // copy the token embedding into x
+        const x = try self.allocator.alloc(f32, dim); // (dim)
+        std.mem.copy(f32, x, weight.token_embedding_table[token * dim .. (token + 1) * dim]);
+        defer self.allocator.free(x);
+        // forward all the layers
+        for (0..self.config.n_layers) |l| {
+            const xb = try math.rmsnorm(self.allocator, x, weight.rms_att_weight[l * dim .. (l + 1) * dim]);
+            defer self.allocator.free(xb);
+            // qkv matmuls for this position
+            const q = try math.matmul(self.allocator, xb, weight.wq[l * dim * dim .. (l + 1) * dim * dim]); // (dim)
+            const k = try math.matmul(self.allocator, xb, weight.wk[l * dim * dim .. (l + 1) * dim * dim]); // (dim)
+            const v = try math.matmul(self.allocator, xb, weight.wv[l * dim * dim .. (l + 1) * dim * dim]); // (dim)
+            defer self.allocator.free(q);
+            defer self.allocator.free(k);
+            defer self.allocator.free(v);
+            // apply RoPE rotation to the q and k vectors for each head
+            rope(
+                self.config,
+                q,
+                k,
+                weight.freq_cis_real[pos * head_size / 2 .. (pos + 1) * head_size / 2],
+                weight.freq_cis_imag[pos * head_size / 2 .. (pos + 1) * head_size / 2],
+            );
+            // save key,value at this time step (pos) to our kv cache
+            const loff = l * self.config.seq_len * dim;
+            std.mem.copy(f32, state.key_cache[loff + pos * dim .. loff + (pos + 1) * dim], k);
+            std.mem.copy(f32, state.value_cache[loff + pos * dim .. loff + (pos + 1) * dim], v);
+            // multihead attention. iterate over all heads
+            const xb2 = try attention(
+                self.allocator,
+                self.config,
+                q,
+                state,
+                loff,
+                pos,
+                weight.wo[l * dim * dim .. (l + 1) * dim * dim],
+            ); // (dim)
+            defer self.allocator.free(xb2);
+            // residual connection back into x
+            math.accum(x, xb2);
+            // ffn rmsnorm
+            const xb3 = try math.rmsnorm(self.allocator, x, weight.rms_ffn_weight[l * dim .. (l + 1) * dim]);
+            defer self.allocator.free(xb3);
+            // Now for FFN in PyTorch we have: self.w2(F.silu(self.w1(x)) * self.w3(x))
+            // first calculate self.w1(x) and self.w3(x)
+            const hb = try math.matmul(
+                self.allocator,
+                x,
+                weight.w1[l * hidden_dim * dim .. (l + 1) * hidden_dim * dim],
+            ); // (hidden_dim)
+            defer self.allocator.free(hb);
+            const hb2 = try math.matmul(
+                self.allocator,
+                x,
+                weight.w3[l * hidden_dim * dim .. (l + 1) * hidden_dim * dim],
+            ); // (hidden_dim)
+            defer self.allocator.free(hb2);
+            math.silu(hb);
+            // elementwise multiply with w3(x)
+            for (hb, hb2) |*hbi, hb2i| {
+                hbi.* = hbi.* * hb2i;
+            }
+            // final matmul to get the output of the ffn
+            const xb4 = try math.matmul(
+                self.allocator,
+                hb,
+                weight.w2[l * dim * hidden_dim .. (l + 1) * dim * hidden_dim],
+            ); // (dim)
+            defer self.allocator.free(xb4);
+            // residual connection
+            math.accum(x, xb4);
+        }
+        // final rmsnorm
+        const x2 = try math.rmsnorm(self.allocator, x, weight.rms_final_weight);
+        defer self.allocator.free(x2); // (dim)
+        // classifier into logits
+        // shared weight
+        const logits = try math.matmul(self.allocator, x2, weight.token_embedding_table); // (vocab_size)
+        return logits;
+    }
 };
 
 // See: https://github.com/karpathy/llama2.c/blob/master/run.c, `checkpoint_init_weights` function
@@ -128,4 +218,66 @@ fn readWeight(allocator: Allocator, config: Config, weight_memory: []const u8) !
         .freq_cis_imag = utils.sliceCast(f32, memories[12]),
     };
     return weight;
+}
+
+fn rope(config: Config, q: []f32, k: []f32, freq_cis_real_row: []const f32, freq_cis_imag_row: []const f32) void {
+    const head_size = config.dim / config.n_heads;
+    for (0..config.n_heads) |h| {
+        // get the q and k vectors for this head
+        const qh = q[h * head_size .. (h + 1) * head_size];
+        const kh = k[h * head_size .. (h + 1) * head_size];
+        // rotate q and k by the freq_cis_real and freq_cis_imag
+        var i: usize = 0;
+        while (i < head_size) : (i += 2) {
+            const q0 = qh[i];
+            const q1 = qh[i + 1];
+            const k0 = kh[i];
+            const k1 = kh[i + 1];
+            const fcr = freq_cis_real_row[i / 2];
+            const fci = freq_cis_imag_row[i / 2];
+            q[i] = q0 * fcr - q1 * fci;
+            q[i + 1] = q0 * fci + q1 * fcr;
+            k[i] = k0 * fcr - k1 * fci;
+            k[i + 1] = k0 * fci + k1 * fcr;
+        }
+    }
+}
+
+fn attention(allocator: Allocator, config: Config, q: []f32, state: State, loff: usize, pos: usize, ol: []const f32) ![]f32 {
+    const dim = config.dim;
+    const head_size = dim / config.n_heads;
+    const xb = try allocator.alloc(f32, dim);
+    defer allocator.free(xb);
+    for (0..config.n_heads) |h| {
+        // get the query vector for this head
+        const qh = q[h * head_size .. (h + 1) * head_size]; // (head_size)
+        // attention scores for this head
+        const att = try allocator.alloc(f32, pos + 1);
+        defer allocator.free(att);
+        // iterate over all timesteps, including the current one
+        for (att, 0..) |*a, t| {
+            // get the key vector for this head and at this timestep
+            const kh = state.key_cache[loff + t * dim + h * head_size .. loff + t * dim + (h + 1) * head_size]; // (head_size)
+            // calculate the attention score as the dot product of q and k
+            a.* = math.dot(qh, kh) / @as(f32, @floatFromInt(std.math.sqrt(head_size)));
+        }
+        // softmax the scores to get attention weights, from 0..pos inclusively
+        math.softmax(att);
+        // weighted sum of the values
+        const xbh = xb[h * head_size .. (h + 1) * head_size]; // (head_size)
+        for (xbh) |*xbhi| {
+            xbhi.* = 0;
+        }
+        for (att, 0..) |a, t| {
+            // get the value vector for this head and at this timestep
+            const vh = state.value_cache[loff + t * dim + h * head_size .. loff + t * dim + (h + 1) * head_size]; // (head_size)
+            // accumulate the weighted value into xb
+            for (xbh, vh) |*xbhi, vhi| {
+                xbhi.* += a * vhi;
+            }
+        }
+    }
+    // final matmul to get the output of the attention
+    const xb2 = try math.matmul(allocator, xb, ol);
+    return xb2;
 }

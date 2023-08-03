@@ -2,14 +2,14 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 // See: https://github.com/karpathy/llama2.c/blob/master/run.c, `accum` function
-pub fn accum(a: []f32, b: []f32) void {
+pub fn accum(a: []f32, b: []const f32) void {
     for (a, b) |*ai, bi| {
         ai.* += bi;
     }
 }
 
 // See: https://github.com/karpathy/llama2.c/blob/master/run.c, `rmsnorm` function
-pub fn rmsnorm(allocator: Allocator, x: []f32, weight: []f32) ![]f32 {
+pub fn rmsnorm(allocator: Allocator, x: []const f32, weight: []const f32) ![]f32 {
     const o = try allocator.alloc(f32, x.len);
     // calculate sum of squares
     var ss: f32 = 0.0;
@@ -48,7 +48,7 @@ pub fn softmax(x: []f32) void {
 }
 
 // See: https://github.com/karpathy/llama2.c/blob/master/run.c, `matmul` function
-pub fn matmul(allocator: Allocator, x: []f32, w: []f32) ![]f32 {
+pub fn matmul(allocator: Allocator, x: []const f32, w: []const f32) ![]f32 {
     // W (d,n) @ x (n,) -> xout (d,)
     const d = w.len / x.len;
     const n = x.len;
@@ -60,4 +60,19 @@ pub fn matmul(allocator: Allocator, x: []f32, w: []f32) ![]f32 {
         }
     }
     return xout;
+}
+
+pub fn dot(a: []f32, b: []f32) f32 {
+    var d: f32 = 0.0;
+    for (a, b) |ai, bi| {
+        d += ai * bi;
+    }
+    return d;
+}
+
+// F.silu; silu(x)=x*σ(x),where σ(x) is the logistic sigmoid
+pub fn silu(x: []f32) void {
+    for (x) |*xi| {
+        xi.* = xi.* / (1.0 + std.math.exp(-xi.*));
+    }
 }
