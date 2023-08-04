@@ -66,10 +66,10 @@ pub fn matmul(allocator: Allocator, x: []const f32, w: []const f32) ![]f32 {
 pub fn argmax(v: []const f32) usize {
     var max_i: usize = 0;
     var max_p = v[0];
-    for (v[1..], 0..) |vi, i| {
-        if (vi > max_p) {
+    for (1..v.len) |i| {
+        if (v[i] > max_p) {
             max_i = i;
-            max_p = vi;
+            max_p = v[i];
         }
     }
     return max_i;
