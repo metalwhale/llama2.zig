@@ -37,7 +37,7 @@ pub fn main() !void {
     while (pos < steps) : (pos += 1) {
         var next: usize = undefined;
         // forward the transformer to get logits for the next token
-        const logits = try model.transformer(state, token, 0);
+        const logits = try model.transformer(state, token, pos);
         defer allocator.free(logits);
         if (pos < num_prompt_tokens) {
             // if we are still processing the input prompt, force the next prompt token

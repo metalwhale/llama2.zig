@@ -140,13 +140,13 @@ pub const Model = struct {
             // first calculate self.w1(x) and self.w3(x)
             const hb = try math.matmul(
                 self.allocator,
-                x,
+                xb3,
                 weight.w1[l * hidden_dim * dim .. (l + 1) * hidden_dim * dim],
             ); // (hidden_dim)
             defer self.allocator.free(hb);
             const hb2 = try math.matmul(
                 self.allocator,
-                x,
+                xb3,
                 weight.w3[l * hidden_dim * dim .. (l + 1) * hidden_dim * dim],
             ); // (hidden_dim)
             defer self.allocator.free(hb2);
@@ -235,10 +235,10 @@ fn rope(config: Config, q: []f32, k: []f32, freq_cis_real_row: []const f32, freq
             const k1 = kh[i + 1];
             const fcr = freq_cis_real_row[i / 2];
             const fci = freq_cis_imag_row[i / 2];
-            q[i] = q0 * fcr - q1 * fci;
-            q[i + 1] = q0 * fci + q1 * fcr;
-            k[i] = k0 * fcr - k1 * fci;
-            k[i + 1] = k0 * fci + k1 * fcr;
+            qh[i] = q0 * fcr - q1 * fci;
+            qh[i + 1] = q0 * fci + q1 * fcr;
+            kh[i] = k0 * fcr - k1 * fci;
+            kh[i + 1] = k0 * fci + k1 * fcr;
         }
     }
 }
@@ -259,7 +259,7 @@ fn attention(allocator: Allocator, config: Config, q: []f32, state: State, loff:
             // get the key vector for this head and at this timestep
             const kh = state.key_cache[loff + t * dim + h * head_size .. loff + t * dim + (h + 1) * head_size]; // (head_size)
             // calculate the attention score as the dot product of q and k
-            a.* = math.dot(qh, kh) / @as(f32, @floatFromInt(std.math.sqrt(head_size)));
+            a.* = math.dot(qh, kh) / std.math.sqrt(@as(f32, @floatFromInt(head_size)));
         }
         // softmax the scores to get attention weights, from 0..pos inclusively
         math.softmax(att);
