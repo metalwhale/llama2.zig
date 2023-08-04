@@ -62,6 +62,34 @@ pub fn matmul(allocator: Allocator, x: []const f32, w: []const f32) ![]f32 {
     return xout;
 }
 
+// See: https://github.com/karpathy/llama2.c/blob/master/run.c, `argmax` function
+pub fn argmax(v: []const f32) usize {
+    var max_i: usize = 0;
+    var max_p = v[0];
+    for (v[1..], 0..) |vi, i| {
+        if (vi > max_p) {
+            max_i = i;
+            max_p = vi;
+        }
+    }
+    return max_i;
+}
+
+// See: https://github.com/karpathy/llama2.c/blob/master/run.c, `argmax` function
+pub fn sample(prng: *std.rand.DefaultPrng, probabilities: []f32) usize {
+    // sample index from probabilities, they must sum to 1
+    const r = prng.random().float(f32) * std.math.floatMax(f32);
+    var cdf = 0.0;
+    for (probabilities, 0..) |p, i| {
+        cdf += p;
+        if (r < cdf) {
+            return i;
+        }
+    }
+    // in case of rounding errors
+    return probabilities.len - 1;
+}
+
 pub fn dot(a: []f32, b: []f32) f32 {
     var d: f32 = 0.0;
     for (a, b) |ai, bi| {
