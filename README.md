@@ -17,6 +17,12 @@ Llama 2 inference in Zig
     ```bash
     zig build run -- ../models/TinyLlama-15M.bin ../llama2.c/tokenizer.bin
     ```
+    Or:
+    ```bash
+    zig build-exe ./src/main.zig -O ReleaseFast -lc
+    ./main ../models/TinyLlama-15M.bin ../llama2.c/tokenizer.bin
+    ```
+    Output:
     ```
     Hello darkness, my old friend, the sun. He is very hot and he needs to cool down. He looks around and sees a big tree. He thinks it looks like a good place to rest.
     He climbs up the tree and looks around. He sees a big, green tree with lots of leaves. He thinks it looks like a good place to rest. He climbs up the tree and sits on a branch. He feels the cool breeze on his face.
