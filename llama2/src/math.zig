@@ -9,8 +9,7 @@ pub fn accum(a: []f32, b: []const f32) void {
 }
 
 // See: https://github.com/karpathy/llama2.c/blob/master/run.c, `rmsnorm` function
-pub fn rmsnorm(allocator: Allocator, x: []const f32, weight: []const f32) ![]f32 {
-    const o = try allocator.alloc(f32, x.len);
+pub fn rmsnorm(x: []const f32, weight: []const f32, dest: []f32) void {
     // calculate sum of squares
     var ss: f32 = 0.0;
     for (x) |xi| {
@@ -20,10 +19,9 @@ pub fn rmsnorm(allocator: Allocator, x: []const f32, weight: []const f32) ![]f32
     ss += 1e-5; // TODO: Figure out what does this mean
     ss = 1.0 / std.math.sqrt(ss);
     // normalize and scale
-    for (o, x, weight) |*oi, xi, wi| {
-        oi.* = wi * xi * ss;
+    for (dest, x, weight) |*d, xi, wi| {
+        d.* = wi * xi * ss;
     }
-    return o;
 }
 
 // See: https://github.com/karpathy/llama2.c/blob/master/run.c, `softmax` function
@@ -48,18 +46,15 @@ pub fn softmax(x: []f32) void {
 }
 
 // See: https://github.com/karpathy/llama2.c/blob/master/run.c, `matmul` function
-pub fn matmul(allocator: Allocator, x: []const f32, w: []const f32) ![]f32 {
+pub fn matmul(x: []const f32, w: []const f32, dest: []f32) void {
     // W (d,n) @ x (n,) -> xout (d,)
-    const d = w.len / x.len;
     const n = x.len;
-    const xout = try allocator.alloc(f32, d);
-    for (xout, 0..) |*oi, i| {
-        oi.* = 0;
+    for (dest, 0..) |*d, i| {
+        d.* = 0;
         for (w[i * n .. (i + 1) * n], x) |wi, xi| {
-            oi.* += wi * xi;
+            d.* += wi * xi;
         }
     }
-    return xout;
 }
 
 // See: https://github.com/karpathy/llama2.c/blob/master/run.c, `argmax` function
