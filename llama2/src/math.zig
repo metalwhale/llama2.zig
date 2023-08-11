@@ -70,11 +70,11 @@ pub fn argmax(v: []const f32) usize {
     return max_i;
 }
 
-// See: https://github.com/karpathy/llama2.c/blob/master/run.c, `argmax` function
+// See: https://github.com/karpathy/llama2.c/blob/master/run.c, `sample` function
 pub fn sample(prng: *std.rand.DefaultPrng, probabilities: []f32) usize {
     // sample index from probabilities, they must sum to 1
-    const r = prng.random().float(f32) * std.math.floatMax(f32);
-    var cdf = 0.0;
+    const r = prng.random().float(f32);
+    var cdf: f32 = 0.0;
     for (probabilities, 0..) |p, i| {
         cdf += p;
         if (r < cdf) {
