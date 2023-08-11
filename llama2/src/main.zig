@@ -54,7 +54,7 @@ pub fn main() !void {
                 // apply softmax to the logits to get the probabilities for next token
                 math.softmax(logits);
                 // we sample from this distribution to get the next token
-                next = math.sample(prng, logits);
+                next = math.sample(&prng, logits);
             }
         }
         // following BOS token (1), sentencepiece decoder strips any leading whitespace (see PR #89)

@@ -146,7 +146,7 @@ pub const Model = struct {
     }
 
     // See: https://github.com/karpathy/llama2.c/blob/master/run.c, `transformer` function
-    pub fn transformer(self: Self, state: State, token: usize, pos: usize) []const f32 {
+    pub fn transformer(self: Self, state: State, token: usize, pos: usize) []f32 {
         // a few convenience variables
         const dim = self.config.dim;
         const hidden_dim = self.config.hidden_dim;
